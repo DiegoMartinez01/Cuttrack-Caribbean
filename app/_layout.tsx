@@ -1,6 +1,8 @@
 import { Inter_400Regular, Inter_600SemiBold, Inter_700Bold, useFonts } from '@expo-google-fonts/inter';
 import { Stack } from 'expo-router';
-import { ActivityIndicator, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { View } from 'react-native';
+import { LoadingScreen } from './styles/components/ui/LoadingScreen';
 
 export default function RootLayout() {
   const [fontsLoaded] = useFonts({
@@ -9,14 +11,24 @@ export default function RootLayout() {
     'Inter-Bold': Inter_700Bold,
   });
 
-  if (!fontsLoaded) {
-    return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-        <ActivityIndicator size="large" color="#FF6B35" />
-      </View>
-    );
+  const [showLoading, setShowLoading] = useState(true);
+
+  useEffect(() => {
+    // 🔥 Cuando las fuentes estén cargadas, esperar 1.5 segundos para mostrar la pantalla de carga
+    if (fontsLoaded) {
+      const timer = setTimeout(() => {
+        setShowLoading(false);
+      }, 1500);
+      return () => clearTimeout(timer);
+    }
+  }, [fontsLoaded]);
+
+  // 🔥 Si las fuentes no están cargadas, mostrar pantalla de carga con la oruga
+  if (!fontsLoaded || showLoading) {
+    return <LoadingScreen />;
   }
 
+  // 🔥 Cuando todo esté listo, mostrar la app
   return (
     <Stack>
       <Stack.Screen name="index" options={{ headerShown: false }} />
