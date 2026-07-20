@@ -33,7 +33,7 @@ export default function SeleccionarHorario() {
   const [horarioSeleccionado, setHorarioSeleccionado] = useState<string | null>(null);
   const [confirmando, setConfirmando] = useState(false);
   const [fechaSeleccionada, setFechaSeleccionada] = useState<string>('');
-  const [minAdvanceHours, setMinAdvanceHours] = useState(1);
+  const [minAdvanceHours] = useState(1); // Solo lectura, para futuro uso
   
   const [servicioFoto, setServicioFoto] = useState<string | null>(null);
   const [barberoFoto, setBarberoFoto] = useState<string | null>(null);
@@ -123,7 +123,8 @@ export default function SeleccionarHorario() {
             .single();
           
           if (negocio?.min_advance_hours !== undefined) {
-            setMinAdvanceHours(negocio.min_advance_hours);
+            // minAdvanceHours se usa aquí, pero no en el resto del código
+            // Se mantiene la variable para futuras implementaciones
           }
         }
       } catch (error) {
@@ -313,16 +314,21 @@ export default function SeleccionarHorario() {
     return `${dias[fecha.getUTCDay()]}, ${parseInt(day)} ${meses[parseInt(month)-1]}`;
   };
 
-  // 🔥 FUNCIÓN PARA GUARDAR RECORDATORIO EN LA BASE DE DATOS
+  // 🔥 FUNCIÓN CORREGIDA PARA GUARDAR RECORDATORIO
   const guardarRecordatorio = async (
     citaId: string,
     clientId: string,
+    clienteNombre: string,
     fechaHoraCompleta: string
   ) => {
     const fechaRecordatorio = new Date(new Date(fechaHoraCompleta).getTime() - 2 * 60 * 60 * 1000);
     
-    // Solo si la fecha de recordatorio es futura
     if (fechaRecordatorio.getTime() > Date.now()) {
+      // 🔥 CORRECCIÓN: Manejar horarioSeleccionado que puede ser null
+      const horaFormateada = horarioSeleccionado 
+        ? formatHora12(horarioSeleccionado) 
+        : 'Hora no disponible';
+      
       const { error } = await supabase
         .from('scheduled_notifications')
         .insert({
@@ -331,7 +337,7 @@ export default function SeleccionarHorario() {
           user_rol: 'client',
           type: 'reminder',
           title: `⏰ Recordatorio: ${servicioNombre}`,
-          body: `${clienteNombre}, tienes una cita con ${barberoNombre} a las ${formatHora12(horarioSeleccionado)}`,
+          body: `${clienteNombre}, tienes una cita con ${barberoNombre} a las ${horaFormateada}`,
           data: { appointmentId: citaId, screen: 'mis-citas' },
           scheduled_for: fechaRecordatorio.toISOString(),
         });
@@ -359,7 +365,9 @@ export default function SeleccionarHorario() {
     }, 20000);
 
     try {
-      const clientId = await storage.getItem('cliente_id');
+      // 🔥 CORRECCIÓN: clientId con valor por defecto
+      const clientId = (await storage.getItem('cliente_id')) ?? '';
+      
       if (!clientId) {
         showModal('Error', 'No se encontró tu perfil. Inicia sesión nuevamente.', 'error', () => {
           router.replace('/client/login');
@@ -398,18 +406,16 @@ export default function SeleccionarHorario() {
       
       if (timeoutRef.current) clearTimeout(timeoutRef.current);
       
-      // 🔥 Obtener el nombre del cliente para las notificaciones
-      const clienteNombre = await storage.getItem('cliente_nombre') || 'Cliente';
-      const citaId = nuevaCita?.id;
+      // 🔥 CORRECCIÓN: clienteNombre con valor por defecto
+      const clienteNombre = (await storage.getItem('cliente_nombre')) ?? 'Cliente';
+      // 🔥 CORRECCIÓN: citaId con valor por defecto
+      const citaId = nuevaCita?.id ?? '';
 
-      // 🔥 GUARDAR RECORDATORIO EN LA BASE DE DATOS (para el Cron Job)
       if (citaId && clientId) {
-        await guardarRecordatorio(citaId, clientId, fechaHoraCompleta);
+        await guardarRecordatorio(citaId, clientId, clienteNombre, fechaHoraCompleta);
       }
 
-      // 🔥 ENVIAR NOTIFICACIONES LOCALES (inmediatas)
       try {
-        // 1. Notificación de confirmación
         await notify(
           'APPOINTMENT_CONFIRMED',
           `🎯 ¡${(appointmentName || 'Cita').toUpperCase()} Bloqueada!`,
@@ -417,7 +423,6 @@ export default function SeleccionarHorario() {
           { appointmentId: citaId }
         );
 
-        // 2. Programar recordatorio local 2 horas antes (fallback)
         await scheduleReminder(
           citaId,
           clienteNombre,
@@ -426,7 +431,6 @@ export default function SeleccionarHorario() {
           fechaHoraCompleta
         );
       } catch (notifError) {
-        // ⚠️ Si fallan las notificaciones, NO afectan la cita
         console.log('⚠️ Error en notificaciones (no crítico):', notifError);
       }
       
